@@ -1,4 +1,4 @@
-﻿Option Explicit
+Option Explicit
 
 #If VBA7 Then
     Private Declare PtrSafe Sub GetSystemTime Lib "kernel32" (ByRef lpSystemTime As SYSTEMTIME)
@@ -17,10 +17,10 @@ Private Type SYSTEMTIME
     wMilliseconds As Integer
 End Type
 
-' EmployeeSync v2 - nhiều chi nhánh, cấu hình ngoài bằng BranchConfig.xlsx.
-' Chỉ gửi 6 trường công khai: mã NV, họ tên, mã chấm công, phòng ban, bộ phận, chức vụ.
-' CCCD chỉ dùng kiểm tra đủ 12 số tại máy nguồn; KHÔNG ĐƯỢC ĐƯA VÀO JSON.
-' Không đọc/gửi cột lương, phụ cấp, ngày sinh.
+' EmployeeSync v2 - nhieu chi nhanh, cau hinh ngoai bang BranchConfig.xlsx.
+' Chi gui 6 truong cong khai: ma NV, ho ten, ma cham cong, phong ban, bo phan, chuc vu.
+' CCCD chi dung kiem tra du 12 so tai may nguon; KHONG DUOC DUA VAO JSON.
+' Khong doc/gui cot luong, phu cap, ngay sinh.
 
 Private Const CONFIG_FILE As String = "BranchConfig.xlsx"
 Private Const CONFIG_SHEET As String = "Branches"
@@ -43,7 +43,7 @@ Public Sub CopySpecificColumnsToGoogleSheets()
     Application.AskToUpdateLinks = False
 
     configPath = ThisWorkbook.Path & Application.PathSeparator & CONFIG_FILE
-    If Dir(configPath) = "" Then Err.Raise vbObjectError + 100, , "Không tìm thấy " & configPath
+    If Dir(configPath) = "" Then Err.Raise vbObjectError + 100, , "Khong tim thay " & configPath
 
     Set cfgWb = Workbooks.Open(configPath, ReadOnly:=True)
     Set cfgWs = cfgWb.Worksheets(CONFIG_SHEET)
@@ -73,12 +73,12 @@ Public Sub CopySpecificColumnsToGoogleSheets()
 
             If branchCode = "" Or folderPath = "" Or pattern = "" Or sourceSheet = "" Or _
                firstDataRow < 1 Or colName = "" Or colEmp = "" Or apiUrl = "" Or token = "" Then
-                Err.Raise vbObjectError + 101, , "Thiếu cấu hình bắt buộc tại dòng " & r & " trong BranchConfig.xlsx"
+                Err.Raise vbObjectError + 101, , "Thieu cau hinh bat buoc tai dong " & r & " trong BranchConfig.xlsx"
             End If
 
             filePath = FindNewestFile(folderPath, pattern)
             If filePath = "" Then
-                LogLocal "SKIP", branchCode, "Không tìm thấy file: " & folderPath & pattern
+                LogLocal "SKIP", branchCode, "Khong tim thay file: " & folderPath & pattern
             Else
                 result = SyncOneBranch(filePath, excelPassword, sourceSheet, firstDataRow, _
                     branchCode, apiUrl, token, colName, colEmp, colClock, colDept, _
@@ -88,11 +88,11 @@ Public Sub CopySpecificColumnsToGoogleSheets()
         End If
     Next r
 
-    cfgWb.Close False
-    MsgBox "Đã chạy xong cấu hình các chi nhánh. Xem log tại sheet SyncRunLog trong file điều khiển.", vbInformation
+    SafeCloseWorkbook cfgWb
+    MsgBox "Da chay xong cau hinh cac chi nhanh. Xem log tai sheet SyncRunLog trong file dieu khien.", vbInformation
 CleanExit:
     On Error Resume Next
-    If Not cfgWb Is Nothing Then cfgWb.Close False
+    SafeCloseWorkbook cfgWb
     Application.EnableEvents = True
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
@@ -100,7 +100,7 @@ CleanExit:
     Exit Sub
 FatalError:
     LogLocal "ERROR", "", Err.Description
-    MsgBox "Đồng bộ dừng: " & Err.Description, vbCritical
+    MsgBox "Dong bo dung: " & Err.Description, vbCritical
     Resume CleanExit
 End Sub
 
@@ -116,7 +116,7 @@ Private Function SyncOneBranch(ByVal filePath As String, ByVal pwd As String, _
     Dim payload As String, http As Object, response As String
 
     On Error GoTo BranchError
-    Set srcWb = Workbooks.Open(Filename:=filePath, UpdateLinks:=0, ReadOnly:=True, _
+    Set srcWb = Workbooks.Open(fileName:=filePath, UpdateLinks:=0, ReadOnly:=True, _
         Password:=pwd, WriteResPassword:=pwd, IgnoreReadOnlyRecommended:=True)
     Set ws = srcWb.Worksheets(sheetName)
     lastRow = ws.Cells(ws.Rows.Count, ColumnNumber(cEmp)).End(xlUp).Row
@@ -126,7 +126,7 @@ Private Function SyncOneBranch(ByVal filePath As String, ByVal pwd As String, _
         emp = CellText(ws.Cells(i, ColumnNumber(cEmp)))
         nm = CellText(ws.Cells(i, ColumnNumber(cName)))
         If emp <> "" And nm <> "" Then
-            ' CCCD chỉ là điều kiện kiểm tra tại máy nguồn; tuyệt đối không gửi lên API.
+            ' CCCD chi la dieu kien kiem tra tai may nguon; tuyet doi khong gui len API.
             If cCCCD <> "" Then
                 cccd = DigitsOnly(CellText(ws.Cells(i, ColumnNumber(cCCCD))))
                 If Len(cccd) <> 12 Then GoTo ContinueLoop
@@ -141,9 +141,9 @@ Private Function SyncOneBranch(ByVal filePath As String, ByVal pwd As String, _
         End If
 ContinueLoop:
     Next i
-    srcWb.Close False
+    SafeCloseWorkbook srcWb
     If arr.Count = 0 Then
-        SyncOneBranch = "Không có nhân viên hợp lệ"
+        SyncOneBranch = "Khong co nhan vien hop le"
         Exit Function
     End If
 
@@ -163,16 +163,16 @@ ContinueLoop:
     response = http.responseText
     If http.Status <> 200 Then Err.Raise vbObjectError + 102, , "HTTP " & http.Status & ": " & response
     If InStr(1, response, """status"":""success""", vbTextCompare) = 0 Then _
-        Err.Raise vbObjectError + 103, , "API từ chối: " & response
+        Err.Raise vbObjectError + 103, , "API tá»« chá»‘i: " & response
 
     sentCount = arr.Count
-    SyncOneBranch = "Thành công, gửi " & arr.Count & " nhân viên. " & response
+    SyncOneBranch = "Thanh cong, gui " & arr.Count & " nhan vien. " & response
     Exit Function
 
 BranchError:
     On Error Resume Next
-    If Not srcWb Is Nothing Then srcWb.Close False
-    SyncOneBranch = "LỖI: " & Err.Description
+    SafeCloseWorkbook srcWb
+    SyncOneBranch = "Lá»–I: " & Err.Description
     LogLocal "ERROR", branch, SyncOneBranch
 End Function
 
@@ -197,7 +197,7 @@ Private Function ColumnNumber(ByVal col As String) As Long
     If IsNumeric(col) Then ColumnNumber = CLng(col): Exit Function
     For i = 1 To Len(col)
         ch = Asc(Mid$(col, i, 1))
-        If ch < 65 Or ch > 90 Then Err.Raise vbObjectError + 104, , "Cột không hợp lệ: " & col
+        If ch < 65 Or ch > 90 Then Err.Raise vbObjectError + 104, , "Cot khong hop le: " & col
         n = n * 26 + ch - 64
     Next i
     ColumnNumber = n
@@ -211,7 +211,7 @@ Private Function CellText(rng As Range) As String
     If IsError(rng.Value) Or IsEmpty(rng.Value) Then
         CellText = ""
     Else
-        CellText = Trim$(CStr(rng.Text))
+        CellText = Trim$(CStr(rng.text))
         If CellText = "####" Then CellText = Trim$(CStr(rng.Value2))
     End If
 End Function
@@ -245,12 +245,23 @@ End Function
 
 Private Function Utf8Bytes(ByVal text As String) As Variant
     Dim stream As Object
+
     Set stream = CreateObject("ADODB.Stream")
-    stream.Type = 2: stream.Charset = "utf-8": stream.Open
+
+    stream.Type = 2
+    stream.Charset = "utf-8"
+    stream.Open
     stream.WriteText text
-    stream.Position = 0: stream.Type = 1
+
+    ' Chuyen sang Binary và bo UTF-8 BOM (3 byte)
+    stream.Position = 0
+    stream.Type = 1
+    stream.Position = 3
+
     Utf8Bytes = stream.Read
+
     stream.Close
+    Set stream = Nothing
 End Function
 
 Private Sub LogLocal(ByVal level As String, ByVal branch As String, ByVal message As String)
@@ -267,4 +278,17 @@ Private Sub LogLocal(ByVal level As String, ByVal branch As String, ByVal messag
     ws.Cells(nr, 2).Value = level
     ws.Cells(nr, 3).Value = branch
     ws.Cells(nr, 4).Value = message
+End Sub
+Private Sub SafeCloseWorkbook(ByRef wb As Workbook)
+
+    On Error Resume Next
+
+    If Not wb Is Nothing Then
+        wb.Close SaveChanges:=False
+        Set wb = Nothing
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
 End Sub
