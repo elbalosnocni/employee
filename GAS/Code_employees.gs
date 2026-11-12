@@ -29,7 +29,20 @@ function doPost(e) {
     if (!e || !e.postData || !e.postData.contents) {
       return jsonOut_({status: 'error', message: 'Empty request'});
     }
-    const body = JSON.parse(e.postData.contents);
+    let raw = e.postData.contents || '';
+
+  // Loại bỏ UTF-8 BOM nếu có
+  raw = raw.replace(/^\uFEFF/, '').trim();
+
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      'JSON không hợp lệ: ' + err.message +
+      '. Dữ liệu nhận được: ' + raw.substring(0, 200)
+    );
+  }
     validatePayload_(body);
 
     const props = PropertiesService.getScriptProperties();
@@ -197,4 +210,10 @@ function setupEmployeeSheets() {
   getOrCreateSheet_(ss, EMP_CFG.EMPLOYEE_SHEET, EMP_CFG.HEADERS);
   getOrCreateSheet_(ss, EMP_CFG.LOG_SHEET,
     ['Timestamp', 'BranchCode', 'Received', 'Inserted', 'Updated', 'Skipped', 'Status', 'Note']);
+}
+function setupBranch() {
+  setBranchToken(
+    'VN',
+    '123456789012345676'
+  );
 }
